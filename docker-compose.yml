@@ -1,0 +1,61 @@
+services:
+  web:
+    image: campus-navigation-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80" # Exposes port 80 of the container to port 5000 on the host
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development} # Sets the ASP.NET Core environment, defaults to Development
+      - ConnectionStrings__DefaultConnection=Server=db;Port=3306;Database=CampusNavigation;User=root;Password=${DB_PASSWORD:-qwe123} # Database connection string, defaults password to qwe123 if DB_PASSWORD is not set
+      - ASPNETCORE_URLS=http://+:80 # Configures Kestrel to listen on port 80 for any hostname
+      # Ensure these are set in your deployment environment (e.g., Railway secrets) if your app uses them
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
+      - INSTANCE_NAME=${INSTANCE_NAME}
+      - SQL_CONNECTION_STRING=${SQL_CONNECTION_STRING} # For Azure SQL, if used directly
+    volumes:
+      - ./src/CampusNavigation/wwwroot:/app/wwwroot # Mounts wwwroot for easier static file development (primarily for local dev)
+    depends_on:
+      db:
+        condition: service_healthy # Ensures 'web' service starts only after 'db' service is healthy
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.6
+    command: --default-authentication-plugin=mysql_native_password # Ensures compatibility with older MySQL clients
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-qwe123} # Sets MariaDB root password, defaults to qwe123
+      - MYSQL_DATABASE=CampusNavigation # Creates this database on startup
+    ports:
+      - "3307:3306" # Exposes MariaDB internal port 3306 to host port 3307
+    volumes:
+      - mysql-data:/var/lib/mysql # Persists database data
+      - ./mysql-init:/docker-entrypoint-initdb.d # Runs SQL scripts in this directory on first startup
+    healthcheck: # Defines how to check if the database service is healthy
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-qwe123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8081:80"  # Access phpMyAdmin via http://localhost:8081
+    environment:
+      PMA_HOST: db         # Connects phpMyAdmin to the 'db' service
+      PMA_PORT: 3306       # Internal port of the MariaDB container
+      PMA_USER: root       # MariaDB root user for phpMyAdmin login
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD:-qwe123} # Uses the same root password (or use a dedicated PMA_PASSWORD)
+      UPLOAD_LIMIT: 1G     # Optional: Increases file upload limit for phpMyAdmin
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  mysql-data: {} # Defines the named volume for MariaDB data persistence
+
+networks:
+  default:
+    driver: bridge

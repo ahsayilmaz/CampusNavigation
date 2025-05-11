@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- Other head content -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <!-- Add this line to load the Leaflet JavaScript library -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <!-- Other scripts -->
+     <!-- After Leaflet but before your inline script -->
+    <script src="/js/dataStructures.js"></script>
+    <script src="/js/datas.js"></script>
+    <script src="/js/site.js"></script>
+    <title>Uludağ Üniversitesi - En Kısa Yol</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        #map {
+            height: 89%; /* Set a fixed height */
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        /* Make sure body and html have height */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Control panel styling */
+        #controls {
+            padding: 10px;
+            background-color: #f8f9fa;
+            margin-bottom: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        /* Dropdown styling */
+        select {
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        /* Button styling */
+        button {
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            max-width: 80%;
+        }
+        .notification button {
+            margin-left: 10px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <label>Başlangıç:
+        <select id="startSelect"></select>
+    </label>
+    <label>Bitiş:
+        <select id="endSelect"></select>
+    </label>
+    <label>Rota Tipi:
+        <select id="routeTypeSelect">
+            <option value="shortest">En Kısa Mesafe</option>
+            <option value="leastTraffic">En Az Trafik</option>
+            <option value="quickestPath">En Hızlı Rota (Kişi Sayısı)</option>
+        </select>
+    </label>
+    <button id="showPathButton">Yolu Göster</button>
+    <span id="syncStatus" style="margin-left: auto; padding: 8px;"></span>
+</div>
+
+<div id="stepList" style="padding:10px; font-family:Arial; font-size:14px;"></div>
+<div id="map"></div>
+
+<script src="/js/algorithm.js"></script>
+<script>
+// Clean initialization that avoids variable conflicts
+(function() {
+    // Wait for DOM to be ready
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Initializing campus map application...");
+        
+        // Expose only what's needed to the global scope
+        window.routeLine = null;
+        window.activeMarkers = [];
+        window.buildings = window.buildings || [];
+        
+        // Initialize data sync manager
+        if (typeof DataSyncManager === 'function') {
+            window.dataSyncManager = new DataSyncManager({
+                syncInterval: 20000,
+                syncStatusElement: document.getElementById('syncStatus'),
+                onDataChanged: function(newBuildings, newAdjacency) {
+                    console.log("Data changed, updating UI");
+                    populateDropdowns();
+                    addBuildingMarkers(newBuildings);
+                }
+            });
+            
+            window.dataSyncManager.startSync();
+        } else {
+            console.error("DataSyncManager class not found");
+        }
+        
+        // Setup UI handlers
+        setupEventHandlers();
+    });
+    
+    // Helper function to populate dropdowns
+    function populateDropdowns() {
+        const startSelect = document.getElementById('startSelect');
+        const endSelect = document.getElementById('endSelect');
+        
+        if (!startSelect || !endSelect || !window.buildings) {
+            console.error("Cannot populate dropdowns - missing elements or data");
+            return;
+        }
+        
+        // Clear existing options
+        startSelect.innerHTML = '';
+        endSelect.innerHTML = '';
+        
+        // Add new options
+        window.buildings.forEach(building => {
+            const startOption = document.createElement('option');
+            startOption.value = building.id || building.name;
+            startOption.textContent = building.name;
+            startSelect.appendChild(startOption);
+            
+            const endOption = document.createElement('option');
+            endOption.value = building.id || building.name;
+            endOption.textContent = building.name;
+            endSelect.appendChild(endOption);
+        });
+    }
+    
+    // Helper function to add building markers to the map
+    function addBuildingMarkers(buildings) {
+        if (!window.map || !buildings) return;
+        
+        // Clear existing markers
+        if (window.activeMarkers) {
+            window.activeMarkers.forEach(marker => marker.remove());
+        }
+        window.activeMarkers = [];
+        
+        // Add markers for each building
+        buildings.forEach(building => {
+            if (building.latitude && building.longitude) {
+                const marker = L.marker([building.latitude, building.longitude])
+                    .addTo(window.map)
+                    .bindPopup(building.name);
+                window.activeMarkers.push(marker);
+            }
+        });
+    }
+    
+    // Setup all event handlers in one place
+    function setupEventHandlers() {
+        // Show path button
+        const pathButton = document.getElementById('showPathButton');
+        if (pathButton) {
+            pathButton.addEventListener('click', function() {
+                if (typeof showShortestPath === 'function') {
+                    showShortestPath();
+                } else {
+                    alert('Path function is not available yet');
+                }
+            });
+        }
+    }
+})();
+</script>
+
+</body>
+</html>

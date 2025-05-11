@@ -1,0 +1,31 @@
+# This file specifies files and directories to be ignored by Docker when building the image.
+bin/
+obj/
+*.sln
+*.user
+*.csproj.user
+*.dbmdl
+*.dbproj
+*.jfm
+*.pdb
+*.mdb
+*.log
+*.vs/
+.vscode/
+Dockerfile
+docker-compose.yml
+README.md
+.gitignore
+AzureSqlDockerApi.Tests/
+AzureSqlDockerApi.sln
+**/node_modules/
+**/dist/
+**/build/
+
+# Ignore development-specific appsettings
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Ignore environment files from Docker context
+.env
+*.env
