@@ -6,14 +6,16 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5000:80" # Host:Container
+    env_file:
+      - .env # Load environment variables from .env file
     environment:
-      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
-      - ConnectionStrings__DefaultConnection=Server=db;Port=3306;Database=CampusNavigation;User=root;Password=${DB_PASSWORD:-qwe123}
-      - ASPNETCORE_URLS=http://+:80
-      # Ensure these are set in your deployment environment if your app uses them
-      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
-      - INSTANCE_NAME=${INSTANCE_NAME}
-      - SQL_CONNECTION_STRING=${SQL_CONNECTION_STRING}
+      # Variables for Program.cs to build the connection string
+      - DB_SERVER=db                     # Service name of the database in Docker network
+      - DB_PORT=3306                     # Internal port of the db service
+      # ASPNETCORE_ENVIRONMENT, DB_DATABASE, DB_USER, DB_PASSWORD will be loaded from .env by env_file
+      # INSTANCE_NAME, APPLICATIONINSIGHTS_CONNECTION_STRING, SQL_CONNECTION_STRING also from .env
+      # PORT for ASPNETCORE_URLS will come from .env (defaults to 80 if not set in .env)
+      - ASPNETCORE_URLS=http://+:${PORT:-80}
     volumes:
       - ./src/CampusNavigation/wwwroot:/app/wwwroot # For easier static file development (local dev)
     depends_on:
@@ -31,9 +33,12 @@ services:
     image: mariadb:10.6
     command: --default-authentication-plugin=mysql_native_password # For compatibility
     restart: always
+    env_file:
+      - .env # Load environment variables from .env file
     environment:
-      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-qwe123}
-      - MYSQL_DATABASE=CampusNavigation # Creates this database
+      # These will use values from .env through Docker Compose's variable substitution
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_DATABASE}
     ports:
       - "3307:3306" # Host:Container
     volumes:
@@ -49,12 +54,14 @@ services:
     image: phpmyadmin/phpmyadmin
     ports:
       - "8081:80"  # Access via http://localhost:8081
+    env_file:
+      - .env # Load environment variables from .env file
     environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: ${DB_ROOT_PASSWORD:-qwe123}
-      UPLOAD_LIMIT: 1G     # Optional: Increase upload limit
+      PMA_HOST: db                        # Connect to the 'db' service
+      PMA_PORT: 3306                      # Internal port of the db service
+      PMA_USER: ${DB_USER}                # Use DB_USER from .env (e.g., root)
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD}   # Use DB_ROOT_PASSWORD from .env
+      UPLOAD_LIMIT: 1G                    # Optional: Increase upload limit
     depends_on:
       - db
     restart: unless-stopped
