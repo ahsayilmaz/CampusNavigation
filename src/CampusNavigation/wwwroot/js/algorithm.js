@@ -1,12 +1,11 @@
 let stepText = "";
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Map initialization
     window.map = L.map('map', {
         minZoom: 15,
         maxBounds: [
-            [40.21720889071898, 28.845295152664185], //alt, sol
-            [40.235267194326756, 28.895806934356693]//üst, sağ
+            [40.21720889071898, 28.845295152664185],
+            [40.235267194326756, 28.895806934356693]
         ],
         maxBoundsViscosity: 0.9
     }).setView([40.22459954185981, 28.872349262237552], 12);
@@ -15,14 +14,10 @@ document.addEventListener('DOMContentLoaded', function() {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(window.map);
 
-    // HTML elementleri (references)
     const startSelect = document.getElementById("startSelect");
     const endSelect = document.getElementById("endSelect");
     const routeTypeSelect = document.getElementById("routeTypeSelect");
 
-    // Initial dropdown population from algorithm.js (if still needed)
-    // This might conflict with populateDropdowns in index.html which is called by DataSyncManager
-    // Review if this is necessary or should be removed / coordinated.
     if (window.buildings && typeof window.buildings.forEach === 'function' && startSelect && endSelect) {
         window.buildings.forEach(b => {
             if (!b.name.startsWith("Ar")) {
@@ -34,23 +29,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Global variables for path display, initialized here as they depend on window.map
-    // window.routeLine is already initialized in index.html
-    // window.activeMarkers is already initialized in index.html
-    let pathHistory = {}; // Local to algorithm.js scope, or window.pathHistory if needed globally
+    let pathHistory = {};
     window.segmentGroup = L.layerGroup().addTo(window.map);
 
-    // ALL YOUR FUNCTIONS (showShortestPath, findBuildingByIdOrName, displayRoute, dijkstra etc.)
-    // should be defined or moved here, INSIDE this DOMContentLoaded listener.
-    // For example:
     function findBuildingByIdOrName(value) {
         if (!window.buildings || !Array.isArray(window.buildings)) {
             console.error("Buildings array not available", window.buildings);
             return null;
         }
-        let building = window.buildings.find(b => 
-            b.id === value || 
-            b.id === parseInt(value) || 
+        let building = window.buildings.find(b =>
+            b.id === value ||
+            b.id === parseInt(value) ||
             String(b.id) === String(value)
         );
         if (!building) {
@@ -69,33 +58,29 @@ document.addEventListener('DOMContentLoaded', function() {
         return "Cok yogun";
     }
 
-    // (Other helper functions like Queue, dijkstra, dijkstraTrafficAware, dijkstraSimple)
-    // should also be defined here or ensured they don't rely on DOM before it's ready.
-    // Class Queue definition (if it's simple and doesn't interact with DOM)
-    class Queue { 
+    class Queue {
         constructor() { this.items = []; }
         enqueue(item) { this.items.push(item); }
         dequeue() { return this.items.shift(); }
         isEmpty() { return this.items.length === 0; }
         toArray() { return [...this.items]; }
-        delete(item) { 
+        delete(item) {
             const index = this.items.indexOf(item);
             if (index > -1) this.items.splice(index, 1);
         }
     }
 
-    // Function to fetch building user counts
     async function getBuildingUserCounts() {
         try {
             const response = await fetch('/api/campus/building-user-counts');
             if (!response.ok) {
                 console.error('Failed to fetch building user counts:', response.status);
-                return {}; // Return empty object on failure
+                return {};
             }
             return await response.json();
         } catch (error) {
             console.error('Error fetching building user counts:', error);
-            return {}; // Return empty object on error
+            return {};
         }
     }
 
@@ -137,19 +122,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const distances = {};
         const previous = {};
         const queue = new Set(Object.keys(graph));
-        
+
         for (let node of queue) {
             distances[node] = Infinity;
             previous[node] = null;
         }
         distances[start] = 0;
-        
+
         while (queue.size > 0) {
             const current = [...queue].reduce((a, b) => distances[a] < distances[b] ? a : b);
             if (current === end) break;
             if (distances[current] === Infinity) break;
             queue.delete(current);
-            
+
             for (let neighbor in graph[current]) {
                 if (queue.has(neighbor)) {
                     const segment = graph[current][neighbor];
@@ -185,9 +170,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function dijkstraQuickestPath(graph, start, end, buildingUserCounts) {
-        const distances = {}; // Stores the 'cost' (time) to reach each node
-        const previous = {};  // Stores the previous node in the optimal path
-        const queue = new Set(Object.keys(graph)); // Set of unvisited nodes
+        const distances = {};
+        const previous = {};
+        const queue = new Set(Object.keys(graph));
 
         for (let node of queue) {
             distances[node] = Infinity;
@@ -196,32 +181,23 @@ document.addEventListener('DOMContentLoaded', function() {
         distances[start] = 0;
 
         while (queue.size > 0) {
-            // Find the node with the smallest distance among unvisited nodes
             const current = [...queue].reduce((a, b) => distances[a] < distances[b] ? a : b);
 
-            if (current === end) break; // Path found
-            if (distances[current] === Infinity) break; // No path to remaining nodes
+            if (current === end) break;
+            if (distances[current] === Infinity) break;
 
             queue.delete(current);
 
             for (let neighbor in graph[current]) {
                 if (queue.has(neighbor)) {
-                    const segment = graph[current][neighbor]; // Connection details (distance, traffic)
+                    const segment = graph[current][neighbor];
                     const baseDistance = (typeof segment === 'object' ? segment.distance : segment) || 0;
-                    
-                    // Penalty for passing through a building, proportional to user count
-                    // Higher user count = higher penalty (more time to pass through)
-                    // We use buildingUserCounts for the 'neighbor' node, as that's the building we are entering.
+
                     const buildingId = window.buildings.find(b => b.name === neighbor)?.id;
                     const userCountInNeighbor = buildingId && buildingUserCounts[buildingId] ? buildingUserCounts[buildingId] : 0;
-                    
-                    // Define a penalty factor. Adjust this based on desired impact.
-                    // E.g., each user adds 0.1 to the "time" cost of traversing the building node.
-                    // This is an arbitrary penalty; needs tuning.
-                    // It's applied when *entering* a building (neighbor).
-                    const buildingPenalty = userCountInNeighbor * 0.5; // Example: 0.5 "time units" per user
 
-                    // The "cost" to travel to the neighbor is the path distance + penalty for entering the neighbor building
+                    const buildingPenalty = userCountInNeighbor * 0.5;
+
                     const alt = distances[current] + baseDistance + buildingPenalty;
 
                     if (alt < distances[neighbor]) {
@@ -232,9 +208,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        if (distances[end] === Infinity) return []; // No path found
+        if (distances[end] === Infinity) return [];
 
-        // Reconstruct the path
         const path = [];
         let currentPathNode = end;
         while (currentPathNode !== null) {
@@ -277,8 +252,8 @@ document.addEventListener('DOMContentLoaded', function() {
             unvisited.delete(current);
             for (const neighbor in graph[current]) {
                 if (unvisited.has(neighbor)) {
-                    const distance = typeof graph[current][neighbor] === 'object' 
-                        ? graph[current][neighbor].distance 
+                    const distance = typeof graph[current][neighbor] === 'object'
+                        ? graph[current][neighbor].distance
                         : graph[current][neighbor];
                     const alt = distances[current] + distance;
                     if (alt < distances[neighbor]) {
@@ -301,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log("Path found:", path);
         return path;
     }
-    
+
     function displayRoute(path, routeType) {
         console.log("Displaying route:", path, "routeType:", routeType);
         const latlngs = [];
@@ -331,20 +306,20 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log("Path coordinates:", latlngs);
         const routeColor = routeType === 'leastTraffic' ? '#9C27B0' : '#2196F3';
         try {
-            window.routeLine = L.polyline(latlngs, { 
-                color: routeColor, 
+            window.routeLine = L.polyline(latlngs, {
+                color: routeColor,
                 weight: 5,
                 dashArray: routeType === 'leastTraffic' ? '10, 10' : null
             }).addTo(window.map);
-            window.activeMarkers.forEach(marker => marker.remove()); // Clear previous step markers
-            window.activeMarkers = []; // Reset active markers for new route steps
+            window.activeMarkers.forEach(marker => marker.remove());
+            window.activeMarkers = [];
             path.forEach((stop, i) => {
                 const building = window.buildings.find(b => b.name === stop);
-                if (building && 
-                    typeof building.latitude === 'number' && 
+                if (building &&
+                    typeof building.latitude === 'number' &&
                     typeof building.longitude === 'number') {
                     const marker = L.marker([building.latitude, building.longitude])
-                        .addTo(window.segmentGroup || window.map) // Ensure segmentGroup is used
+                        .addTo(window.segmentGroup || window.map)
                         .bindTooltip(stop, { permanent: true, direction: 'top', offset: [0, -10] });
                     window.activeMarkers.push(marker);
                 }
@@ -355,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             if (typeof showStepList === 'function') {
-                // showStepList(path, routeType); // Commented out to prevent display
+                // showStepList(path, routeType);
             }
             console.log("Route display complete");
         } catch (error) {
@@ -406,7 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function showStepListAlert(path, routeType) {
-        stepText = ""; // Reset global stepText
+        stepText = "";
         let totalDistance = 0;
         for (let i = 0; i < path.length - 1; i++) {
             if (routeType === "shortest") {
@@ -431,9 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    
-    // This function is called by the button in index.html
-    // It needs to be global.
+
     function showShortestPathInternal() {
         console.log("=== Starting path calculation ===");
         if (!startSelect || !endSelect || !routeTypeSelect) {
@@ -451,8 +424,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const startBuilding = findBuildingByIdOrName(start);
         const endBuilding = findBuildingByIdOrName(end);
-        console.log("Found buildings:", { 
-            startBuilding: startBuilding ? startBuilding.name : 'Not found', 
+        console.log("Found buildings:", {
+            startBuilding: startBuilding ? startBuilding.name : 'Not found',
             endBuilding: endBuilding ? endBuilding.name : 'Not found'
         });
         if (!startBuilding || !endBuilding) {
@@ -473,7 +446,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         window.activeMarkers = [];
         if (!window.adjacency || Object.keys(window.adjacency).length === 0) {
-            if (typeof adjacency !== 'undefined') { // Fallback to datas.js adjacency
+            if (typeof adjacency !== 'undefined') {
                 console.log("Using fallback adjacency data from datas.js");
                 window.adjacency = adjacency;
                 window.legacyAdjacency = {};
@@ -498,8 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
             alert(`Başlangıç binası (${startBuilding.name}) için bağlantı verisi bulunamadı.`);
             return;
         }
-        
-        // Fetch all necessary data concurrently
+
         Promise.all([
             window.getUserDensityData ? window.getUserDensityData() : Promise.resolve({ edges: {} }),
             routeType === 'quickestPath' ? getBuildingUserCounts() : Promise.resolve({})
@@ -512,15 +484,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     path = dijkstraTrafficAware(window.adjacency, startBuilding.name, endBuilding.name, userDensityData.edges || {});
                 } else if (routeType === 'quickestPath') {
                     console.log("Calculating 'Quickest Path' using building user counts:", buildingUserCounts);
-                    // Ensure buildingUserCounts keys are building IDs if that's what the backend provides
-                    // The dijkstraQuickestPath function expects building names as keys in the graph,
-                    // but uses building IDs to look up user counts.
                     path = dijkstraQuickestPath(window.adjacency, startBuilding.name, endBuilding.name, buildingUserCounts || {});
-                } else { // 'shortest'
+                } else {
                     console.log("Calculating 'Shortest Distance' path using legacy adjacency:", window.legacyAdjacency || {});
                     path = dijkstra(window.legacyAdjacency || {}, startBuilding.name, endBuilding.name);
                 }
-                
+
                 console.log("Path calculation result:", path);
                 if (!path || path.length === 0) {
                     alert(`Bu iki nokta arasında yol bulunamadı: ${startBuilding.name} → ${endBuilding.name}`);
@@ -540,7 +509,7 @@ document.addEventListener('DOMContentLoaded', function() {
             alert("Rota hesaplanırken bir hata oluştu: " + error.message);
         });
     }
-    window.showShortestPath = showShortestPathInternal; // Expose to global scope
+    window.showShortestPath = showShortestPathInternal;
 
     function speakPath(path, routeType) {
         let routeDesc = routeType === "shortest" ? "En kısa" : "Trafik duyarlı";
@@ -550,7 +519,7 @@ document.addEventListener('DOMContentLoaded', function() {
         utterance.lang = "tr-TR";
         speechSynthesis.speak(utterance);
     }
-    window.speakPath = speakPath; // Expose if called globally
+    window.speakPath = speakPath;
 
     function showStepOnAlertBox() {
         if(stepText)
@@ -558,13 +527,12 @@ document.addEventListener('DOMContentLoaded', function() {
         else
             alert("Rota bilgileri belirlenmedi. Lütfen rota belirleyiniz.");
     }
-    window.showStepOnAlertBox = showStepOnAlertBox; // Expose if called globally
+    window.showStepOnAlertBox = showStepOnAlertBox;
 
-    // Mock getUserDensityData if not provided by site.js or elsewhere
     if (typeof window.getUserDensityData === 'undefined') {
         window.getUserDensityData = function() {
             console.log("Using mock getUserDensityData in algorithm.js");
             return Promise.resolve({ nodes: {}, edges: {} });
         };
     }
-}); // End of DOMContentLoaded
+});

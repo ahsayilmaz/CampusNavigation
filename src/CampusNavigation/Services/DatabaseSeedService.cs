@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace CampusNavigation.Services
 {
@@ -27,48 +28,64 @@ namespace CampusNavigation.Services
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var overallStopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("DatabaseSeedService StartAsync started.");
 
             try
             {
-                _logger.LogInformation("Checking database connection and data...");
-                
-                // Try to connect to the database
-                if (!await dbContext.Database.CanConnectAsync(cancellationToken))
+                using (var scope = _scopeFactory.CreateScope())
                 {
-                    _logger.LogWarning("Cannot connect to database. Please check connection string and server.");
-                    return;
-                }
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var stopwatch = Stopwatch.StartNew(); 
 
-                // Ensure database is created
-                await dbContext.Database.EnsureCreatedAsync(cancellationToken);
-                
-                // Only seed if the database is empty
-                if (!await dbContext.Buildings.AnyAsync(cancellationToken))
-                {
-                    _logger.LogInformation("Database is empty, seeding initial data...");
-                    await SeedDataAsync(dbContext, cancellationToken);
-                }
-                else
-                {
-                    _logger.LogInformation("Database already contains data. Skipping seed.");
+                    _logger.LogInformation("Checking if database can connect...");
+                    if (!await dbContext.Database.CanConnectAsync(cancellationToken))
+                    {
+                        _logger.LogError("Database connection could not be established.");
+                        overallStopwatch.Stop(); 
+                        _logger.LogInformation("DatabaseSeedService StartAsync finished due to connection error. Total time: {ElapsedMilliseconds}ms", overallStopwatch.ElapsedMilliseconds);
+                        return;
+                    }
+                    stopwatch.Stop(); 
+                    _logger.LogInformation("Database.CanConnectAsync completed. Time taken: {ElapsedMilliseconds}ms", stopwatch.ElapsedMilliseconds);
+
+                    stopwatch.Restart(); 
+                    _logger.LogInformation("Checking for existing building data...");
+                    bool anyBuildings = await dbContext.Buildings.AnyAsync(cancellationToken); 
+                    
+                    if (!anyBuildings) 
+                    {
+                        _logger.LogInformation("No building data found. Proceeding to seed data.");
+                        await SeedDataAsync(dbContext, cancellationToken); 
+                        stopwatch.Stop(); 
+                        _logger.LogInformation("Data seeding check and initial data population completed. Time taken for this stage: {ElapsedMilliseconds}ms", stopwatch.ElapsedMilliseconds);
+                    }
+                    else
+                    {
+                        stopwatch.Stop(); 
+                        _logger.LogInformation("Database already contains building data. Skipping seed. Time taken for check: {ElapsedMilliseconds}ms", stopwatch.ElapsedMilliseconds);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An error occurred while seeding the database");
+                _logger.LogError(ex, "An error occurred during DatabaseSeedService StartAsync.");
+            }
+            finally
+            {
+                overallStopwatch.Stop();
+                _logger.LogInformation("DatabaseSeedService StartAsync finished. Total time: {ElapsedMilliseconds}ms", overallStopwatch.ElapsedMilliseconds);
             }
         }
 
         private async Task SeedDataAsync(ApplicationDbContext context, CancellationToken cancellationToken)
         {
+            var seedStopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("SeedDataAsync started.");
             try
             {
-                // Buildings from datas.js
                 var buildings = new List<Building>
                 {
-                    // --- Start of buildings from datas.js ---
                     new Building { Name = "üniversite ana giriş", Latitude = 40.21925, Longitude = 28.879861 },
                     new Building { Name = "İBF C Blok", Latitude = 40.227861, Longitude = 28.873917 },
                     new Building { Name = "Kampüs Kafe", Latitude = 40.229889, Longitude = 28.872639 },
@@ -138,22 +155,22 @@ namespace CampusNavigation.Services
                     new Building { Name = "Ar30", Latitude = 40.2252223, Longitude = 28.8686111 },
                     new Building { Name = "Ar29", Latitude = 40.2239723, Longitude = 28.86225 },
                     new Building { Name = "Ar31", Latitude = 40.2264167, Longitude = 28.8707223 }
-                    // --- End of buildings from datas.js ---
                 };
 
                 _logger.LogInformation("Adding {Count} buildings", buildings.Count);
                 await context.Buildings.AddRangeAsync(buildings, cancellationToken);
-                await context.SaveChangesAsync(cancellationToken); // Save buildings to get their IDs
+                await context.SaveChangesAsync(cancellationToken); 
+                _logger.LogInformation("Buildings saved. Time taken: {ElapsedMilliseconds}ms", seedStopwatch.ElapsedMilliseconds);
+                var tempStopwatch = Stopwatch.StartNew();
 
-                // Create a dictionary for quick lookup of buildings by name
-                // Filter out buildings with null names before creating the dictionary
                 var buildingDict = await context.Buildings
                                             .Where(b => b.Name != null)
-                                            .ToDictionaryAsync(b => b.Name!, b => b, cancellationToken); // Add ! to b.Name to satisfy notnull constraint
+                                            .ToDictionaryAsync(b => b.Name!, b => b, cancellationToken); 
+                _logger.LogInformation("Building dictionary created. Time taken: {ElapsedMilliseconds}ms", tempStopwatch.ElapsedMilliseconds);
+                tempStopwatch.Restart();
 
                 var connections = new List<BuildingConnection>();
 
-                // Helper to add connections, ensuring buildings exist
                 Action<string, string, int, int> addConn = (fromName, toName, distance, traffic) =>
                 {
                     if (buildingDict.TryGetValue(fromName, out var fromBuilding) &&
@@ -169,21 +186,20 @@ namespace CampusNavigation.Services
                     }
                     else
                     {
-                        _logger.LogWarning($"Could not create connection: {fromName} -> {toName}. One or both buildings not found in dictionary.");
+                        _logger.LogWarning($"Could not create connection: {fromName} -> {toName}. One or both buildings not found in dictionary. This might be expected if the building is not in the primary list.");
                     }
                 };
 
-                // Manually translated connections from datas.js adjacency object
                 addConn("Ar11", "Uü Kütüphane", 150, 2);
                 addConn("Ar11", "Ar22", 20, 1);
                 addConn("Ar11", "Ar21", 100, 3);
                 addConn("Ar11", "Ar2", 200, 5);
                 addConn("Uü Kütüphane", "Ar11", 150, 2);
-                addConn("Uü Kütüphane", "Ar12", 80, 1); // Corrected: David People was not in buildings list, assuming Ar12
+                addConn("Uü Kütüphane", "Ar12", 80, 1); 
                 addConn("David People", "Ar12", 50, 1);
                 addConn("David People", "Ar14", 150, 4);
                 addConn("Ar12", "David People", 50, 1);
-                addConn("Ar12", "Uü Kütüphane", 70, 2); // Corrected distance based on datas.js
+                addConn("Ar12", "Uü Kütüphane", 70, 2); 
                 addConn("Ar13", "Ar14", 40, 1);
                 addConn("Ar13", "İBF C Blok", 100, 7);
                 addConn("Ar14", "Ar13", 40, 1);
@@ -239,7 +255,7 @@ namespace CampusNavigation.Services
                 addConn("Ar20", "Ar23", 80, 4);
                 addConn("Ar21", "Ar20", 50, 2);
                 addConn("Ar21", "Ar11", 100, 3);
-                addConn("Ar22", "Ar11", 120, 1);
+                addConn("Ar22", "Ar11", 120, 1); 
                 addConn("Ar23", "Eğitim Fak", 80, 6);
                 addConn("Ar23", "Ar20", 80, 4);
                 addConn("Ar23", "İnşaat Fak", 300, 4);
@@ -256,100 +272,99 @@ namespace CampusNavigation.Services
                 addConn("Ar2", "Ar1", 300, 2);
                 addConn("Ar2", "Ar11", 200, 5);
                 addConn("Ar3", "Ar2", 270, 4);
-                addConn("Ar3", "Afet Acil Durum", 100, 1);
-                addConn("Ar3", "Uü Camii", 200, 4);
-                addConn("Ar3", "Ar10", 210, 6);
+                addConn("Ar3", "Afet Acil Durum", 100, 1); 
+                addConn("Ar3", "Uü Camii", 200, 4); 
+                addConn("Ar3", "Ar10", 210, 3); 
                 addConn("Uü Camii", "Afet Acil Durum", 250, 4);
-                addConn("Uü Camii", "Ar4", 200, 2);
+                addConn("Uü Camii", "Ar4", 200, 3); 
                 addConn("Uü Camii", "Ar3", 200, 4);
-                addConn("Ar4", "Uü Camii", 200, 2);
-                addConn("Ar4", "Göz Hastanesi", 180, 3);
-                addConn("Ar4", "Ar5", 220, 2);
-                addConn("Göz Hastanesi", "Ar4", 180, 3);
-                addConn("Göz Hastanesi", "Ar5", 220, 5);
-                addConn("Ar5", "Göz Hastanesi", 220, 5);
-                addConn("Ar5", "Mete Cengiz", 180, 4);
-                addConn("Ar5", "Rektörlük", 220, 6);
+                addConn("Ar4", "Uü Camii", 200, 3);
+                addConn("Ar4", "Göz Hastanesi", 180, 2); 
+                addConn("Ar4", "Ar5", 220, 3); 
+                addConn("Göz Hastanesi", "Ar4", 180, 2);
+                addConn("Göz Hastanesi", "Ar5", 220, 3); 
+                addConn("Ar5", "Göz Hastanesi", 220, 3);
+                addConn("Ar5", "Mete Cengiz", 180, 4); 
+                addConn("Ar5", "Rektörlük", 220, 5); 
                 addConn("Mete Cengiz", "Ar5", 180, 4);
-                addConn("Mete Cengiz", "Ar9", 180, 3);
-                addConn("Fen Fak", "Ar8", 160, 4);
-                addConn("Fen Fak", "Ar9", 250, 3);
-                addConn("Ar8", "Fen Fak", 160, 4);
-                addConn("Ar8", "Uü Derslik ve Merkez Birimler", 170, 7);
-                addConn("Ar8", "Ar29", 125, 2);
-                addConn("Uü Derslik ve Merkez Birimler", "Ar8", 170, 7);
-                addConn("Uü Derslik ve Merkez Birimler", "Ar6", 150, 5);
-                addConn("Ar6", "Uü Derslik ve Merkez Birimler", 150, 5);
-                addConn("Ar6", "Uni+Sports", 180, 3);
-                addConn("Ar6", "Ar7", 200, 2);
+                addConn("Mete Cengiz", "Ar9", 180, 4); 
+                addConn("Fen Fak", "Ar8", 160, 5); 
+                addConn("Fen Fak", "Ar9", 250, 5); 
+                addConn("Ar8", "Fen Fak", 160, 5);
+                addConn("Ar8", "Uü Derslik ve Merkez Birimler", 170, 6); 
+                addConn("Ar8", "Ar29", 125, 3); 
+                addConn("Uü Derslik ve Merkez Birimler", "Ar8", 170, 6);
+                addConn("Uü Derslik ve Merkez Birimler", "Ar6", 150, 4); 
+                addConn("Ar6", "Uü Derslik ve Merkez Birimler", 150, 4);
+                addConn("Ar6", "Uni+Sports", 180, 3); 
+                addConn("Ar6", "Ar7", 200, 2); 
                 addConn("Uni+Sports", "Ar6", 180, 3);
-                addConn("Uni+Sports", "Metro", 160, 7);
+                addConn("Uni+Sports", "Metro", 160, 7); 
                 addConn("Metro", "Uni+Sports", 160, 7);
-                addConn("Metro", "Tıp Fakültesi", 150, 8);
-                addConn("Metro", "Ar10", 150, 6);
+                addConn("Metro", "Tıp Fakültesi", 150, 8); 
+                addConn("Metro", "Ar10", 150, 6); 
                 addConn("Tıp Fakültesi", "Metro", 150, 8);
-                addConn("Tıp Fakültesi", "Rektörlük", 250, 7);
-                addConn("Tıp Fakültesi", "Ar10", 90, 4);
+                addConn("Tıp Fakültesi", "Rektörlük", 250, 7); 
+                addConn("Tıp Fakültesi", "Ar10", 90, 5); 
                 addConn("Rektörlük", "Tıp Fakültesi", 250, 7);
-                addConn("Rektörlük", "Ar9", 200, 5);
-                addConn("Rektörlük", "Ar5", 220, 6);
-                addConn("Ar9", "Rektörlük", 200, 5);
-                addConn("Ar9", "Mete Cengiz", 180, 3);
-                addConn("Ar9", "Fen Fak", 250, 3);
-                addConn("Daichii  Arge", "Ar7", 180, 1);
-                addConn("Daichii  Arge", "Ulutek", 180, 2);
-                addConn("Ar7", "Daichii  Arge", 180, 1);
+                addConn("Rektörlük", "Ar9", 200, 6); 
+                addConn("Rektörlük", "Ar5", 220, 5);
+                addConn("Ar9", "Rektörlük", 200, 6);
+                addConn("Ar9", "Mete Cengiz", 180, 4);
+                addConn("Ar9", "Fen Fak", 250, 5); 
+                addConn("Daichii  Arge", "Ar7", 180, 2); 
+                addConn("Daichii  Arge", "Ulutek", 180, 2); 
+                addConn("Ar7", "Daichii  Arge", 180, 2);
                 addConn("Ar7", "Ar6", 200, 2);
                 addConn("Ulutek", "Daichii  Arge", 180, 2);
-                addConn("Ar10", "Uü Camii", 120, 3);
-                addConn("Ar10", "Tıp Fakültesi", 90, 4);
-                addConn("Ar10", "Ar3", 210, 6);
+                addConn("Ar10", "Uü Camii", 120, 4); 
+                addConn("Ar10", "Tıp Fakültesi", 90, 5);
+                addConn("Ar10", "Ar3", 210, 3);
                 addConn("Ar10", "Metro", 150, 6);
                 addConn("Ar24", "Kampüs Kafe", 100, 3);
-                addConn("Ar24", "Yurtlar Bölg", 200, 8);
-                addConn("Yurtlar Bölg", "Ar24", 200, 8);
-                addConn("Yurtlar Bölg", "Ar25", 50, 9);
-                addConn("Ar25", "Yurtlar Bölg", 50, 9);
-                addConn("Ar25", "Ar26", 60, 4);
-                addConn("Kestirme", "Ar26", 200, 2);
-                addConn("Kestirme", "Güzel sanatlar", 100, 3);
-                addConn("Kestirme", "ZiraatMühendisliği", 145, 4);
-                addConn("Ar26", "Kestirme", 200, 2);
-                addConn("Ar26", "Ar25", 60, 4);
-                addConn("Güzel sanatlar", "Ar27", 100, 2);
+                addConn("Ar24", "Yurtlar Bölg", 200, 7); 
+                addConn("Yurtlar Bölg", "Ar24", 200, 7);
+                addConn("Yurtlar Bölg", "Ar25", 50, 4); 
+                addConn("Ar25", "Yurtlar Bölg", 50, 4);
+                addConn("Ar25", "Ar26", 60, 3); 
+                addConn("Kestirme", "Ar26", 200, 5); 
+                addConn("Kestirme", "Güzel sanatlar", 100, 3); 
+                addConn("Kestirme", "ZiraatMühendisliği", 145, 4); 
+                addConn("Ar26", "Kestirme", 200, 5);
+                addConn("Ar26", "Ar25", 60, 3);
+                addConn("Güzel sanatlar", "Ar27", 100, 2); 
                 addConn("Güzel sanatlar", "Kestirme", 100, 3);
                 addConn("Ar27", "Güzel sanatlar", 100, 2);
-                addConn("Ar27", "Ar28", 100, 1);
+                addConn("Ar27", "Ar28", 100, 1); 
                 addConn("Ar28", "Ar27", 100, 1);
-                addConn("Ar28", "Besaş", 50, 3);
-                addConn("Besaş", "Ar28", 50, 3);
-                addConn("Besaş", "Çıkış", 200, 9);
-                addConn("Çıkış", "Besaş", 200, 9);
-                addConn("Ar29", "BasımEviMüdürlüğü", 40, 1);
-                addConn("Ar29", "Ar8", 125, 2);
+                addConn("Ar28", "Besaş", 50, 2); 
+                addConn("Besaş", "Ar28", 50, 2);
+                addConn("Besaş", "Çıkış", 200, 8); 
+                addConn("Çıkış", "Besaş", 200, 8);
+                addConn("Ar29", "BasımEviMüdürlüğü", 40, 1); 
+                addConn("Ar29", "Ar8", 125, 3);
                 addConn("BasımEviMüdürlüğü", "Ar29", 40, 1);
-                addConn("BasımEviMüdürlüğü", "ZiraatMühendisliği", 95, 2);
-                addConn("ZiraatMühendisliği", "BasımEviMüdürlüğü", 95, 2);
+                addConn("BasımEviMüdürlüğü", "ZiraatMühendisliği", 95, 3); 
+                addConn("ZiraatMühendisliği", "BasımEviMüdürlüğü", 95, 3);
                 addConn("ZiraatMühendisliği", "Kestirme", 145, 4);
-                addConn("Ar30", "Ar9", 100, 2);
-                addConn("Ar30", "Ar31", 125, 3);
-                addConn("Ar31", "Ar30", 125, 3);
-                addConn("Ar31", "Ar25", 125, 5);
-                addConn("Ar31", "Ar13", 120, 4);
+                addConn("Ar30", "Ar9", 100, 2); 
+                addConn("Ar30", "Ar31", 125, 2); 
+                addConn("Ar31", "Ar30", 125, 2);
+                addConn("Ar31", "Ar25", 125, 3); 
+                addConn("Ar31", "Ar13", 120, 4); 
                 addConn("Afet Acil Durum", "Ar3", 100, 1);
                 addConn("Afet Acil Durum", "Uü Camii", 250, 4);
 
-                _logger.LogInformation("Adding {Count} building connections", connections.Count);
+                _logger.LogInformation("Adding {Count} building connections to context.", connections.Count);
                 await context.BuildingConnections.AddRangeAsync(connections, cancellationToken);
-                await context.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Building connections added to context. Time taken: {ElapsedMilliseconds}ms", tempStopwatch.ElapsedMilliseconds);
+                tempStopwatch.Restart();
 
-                // Seed User Presence Data
                 if (!await context.UserPresences.AnyAsync(cancellationToken))
                 {
                     _logger.LogInformation("Seeding dummy user presence data...");
                     var userPresences = new List<UserPresence>();
 
-                    // Helper to add user presences, ensuring buildings exist
                     Action<string, string> addUserPresence = (userId, buildingName) =>
                     {
                         if (buildingDict.TryGetValue(buildingName, out var building))
@@ -375,9 +390,8 @@ namespace CampusNavigation.Services
 
                     if (userPresences.Any())
                     {
-                        _logger.LogInformation("Adding {Count} user presence records", userPresences.Count);
+                        _logger.LogInformation("Adding {Count} user presence records to context.", userPresences.Count);
                         await context.UserPresences.AddRangeAsync(userPresences, cancellationToken);
-                        await context.SaveChangesAsync(cancellationToken);
                     }
                     else
                     {
@@ -388,14 +402,22 @@ namespace CampusNavigation.Services
                 {
                     _logger.LogInformation("User presence data already exists. Skipping seed.");
                 }
+                _logger.LogInformation("User presences added to context. Time taken: {ElapsedMilliseconds}ms", tempStopwatch.ElapsedMilliseconds);
+                tempStopwatch.Restart();
+
+                _logger.LogInformation("Saving BuildingConnections and UserPresences to database...");
+                await context.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("BuildingConnections and UserPresences saved. Time taken: {ElapsedMilliseconds}ms", tempStopwatch.ElapsedMilliseconds);
 
                 _logger.LogInformation("Database seeding completed successfully.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred while seeding data: {Message}", ex.Message);
-                throw;
+                throw; 
             }
+            seedStopwatch.Stop();
+            _logger.LogInformation("SeedDataAsync finished. Total time: {ElapsedMilliseconds}ms", seedStopwatch.ElapsedMilliseconds);
         }
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

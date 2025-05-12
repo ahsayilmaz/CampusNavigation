@@ -33,16 +33,13 @@ namespace CampusNavigation.Services
 
             try
             {
-                // Create a new scope to retrieve scoped services
                 using (var scope = _serviceProvider.CreateScope())
                 {
                     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                    // Clear UserPresences table
                     int presencesCleared = await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM UserPresences", cancellationToken);
                     _logger.LogInformation($"Cleared {presencesCleared} records from UserPresences table.");
 
-                    // Clear UserLocations table
                     int locationsCleared = await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM UserLocations", cancellationToken);
                     _logger.LogInformation($"Cleared {locationsCleared} records from UserLocations table.");
                 }

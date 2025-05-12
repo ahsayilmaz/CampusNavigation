@@ -7,16 +7,14 @@ namespace CampusNavigation.Models
     {
         public int Id { get; set; }
         
-        // Explicitly identify these as foreign keys
         [ForeignKey("FromBuilding")]
         public int FromBuildingId { get; set; }
         
         [ForeignKey("ToBuilding")]
         public int ToBuildingId { get; set; }
         
-        // Navigation properties
-        public virtual Building? FromBuilding { get; set; } // Made nullable
-        public virtual Building? ToBuilding { get; set; } // Made nullable
+        public virtual Building? FromBuilding { get; set; } 
+        public virtual Building? ToBuilding { get; set; } 
         
         public int Distance { get; set; }
         public double TrafficFactor { get; set; }

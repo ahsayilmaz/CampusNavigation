@@ -9,12 +9,12 @@ namespace CampusNavigation.Models
         [Key]
         public int Id { get; set; }
 
-        public string? UserId { get; set; } // Made nullable
+        public string? UserId { get; set; } 
 
-        public int? CurrentBuildingId { get; set; } // Made nullable
+        public int? CurrentBuildingId { get; set; } 
 
         [ForeignKey("CurrentBuildingId")]
-        public Building? CurrentBuilding { get; set; } // Made nullable
+        public Building? CurrentBuilding { get; set; } 
 
         public DateTime LastSeen { get; set; } = DateTime.UtcNow;
     }

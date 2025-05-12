@@ -7,16 +7,14 @@ namespace CampusNavigation.Models
     {
         [Key]
         public int Id { get; set; }
-        
+
         [Required]
         public string? UserId { get; set; }
-        
-        // Node or building the user is at (can be null if on a path)
+
         public string? CurrentNode { get; set; }
-        
-        // Edge or path the user is on (format: "FromNodeName|ToNodeName")
+
         public string? CurrentEdge { get; set; }
-        
+
         [Required]
         public DateTime Timestamp { get; set; }
     }

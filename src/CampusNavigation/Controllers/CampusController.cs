@@ -16,13 +16,13 @@ namespace CampusNavigation.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<CampusController> _logger;
-        private readonly Services.IDatabaseService _databaseService; // Injected IDatabaseService
+        private readonly Services.IDatabaseService _databaseService;
 
-        public CampusController(ApplicationDbContext context, ILogger<CampusController> logger, Services.IDatabaseService databaseService) // Added IDatabaseService
+        public CampusController(ApplicationDbContext context, ILogger<CampusController> logger, Services.IDatabaseService databaseService)
         {
             _context = context;
             _logger = logger;
-            _databaseService = databaseService; // Store injected service
+            _databaseService = databaseService;
         }
 
         [HttpGet("buildings")]
@@ -38,7 +38,7 @@ namespace CampusNavigation.Controllers
                         longitude = b.Longitude
                     })
                     .ToListAsync();
-                
+
                 return Ok(buildings);
             }
             catch (Exception ex)
@@ -57,54 +57,47 @@ namespace CampusNavigation.Controllers
         {
             try
             {
-                // Get all buildings first for manual joining
                 var buildings = await _context.Buildings.ToDictionaryAsync(b => b.Id, b => b);
-                
-                // Get connections without using Include() to avoid the problematic join
                 var connections = await _context.BuildingConnections.ToListAsync();
 
-                // Format as adjacency dictionary with building names as keys
                 var adjacencyDict = new Dictionary<string, Dictionary<string, object>>();
-                
+
                 foreach (var connection in connections)
                 {
-                    // Skip if we can't find the buildings
-                    if (!buildings.TryGetValue(connection.FromBuildingId, out var fromBuilding) || 
+                    if (!buildings.TryGetValue(connection.FromBuildingId, out var fromBuilding) ||
                         !buildings.TryGetValue(connection.ToBuildingId, out var toBuilding))
                     {
-                        _logger.LogWarning("Connection {id} references missing buildings: From={fromId}, To={toId}", 
+                        _logger.LogWarning("Connection {id} references missing buildings: From={fromId}, To={toId}",
                             connection.Id, connection.FromBuildingId, connection.ToBuildingId);
                         continue;
                     }
-                    
+
                     var fromName = fromBuilding.Name;
                     var toName = toBuilding.Name;
 
-                    // Skip if building names are null or empty
                     if (string.IsNullOrEmpty(fromName) || string.IsNullOrEmpty(toName))
                     {
-                        _logger.LogWarning("Connection {id} has buildings with null or empty names: From='{fromName}', To='{toName}'", 
+                        _logger.LogWarning("Connection {id} has buildings with null or empty names: From='{fromName}', To='{toName}'",
                             connection.Id, fromName, toName);
                         continue;
                     }
-                    
+
                     if (!adjacencyDict.ContainsKey(fromName))
                     {
                         adjacencyDict[fromName] = new Dictionary<string, object>();
                     }
-                    
+
                     adjacencyDict[fromName][toName] = new {
                         distance = connection.Distance,
                         traffic = connection.TrafficFactor
                     };
                 }
-                
+
                 return Ok(adjacencyDict);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error retrieving connections");
-                // Return an empty adjacency dictionary rather than an error to avoid breaking the client
                 return Ok(new Dictionary<string, Dictionary<string, object>>());
             }
         }

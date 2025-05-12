@@ -8,7 +8,6 @@ namespace CampusNavigation.Models
     {
         public Building()
         {
-            // Initialize collections to avoid null reference exceptions
             OutgoingConnections = new HashSet<BuildingConnection>();
             IncomingConnections = new HashSet<BuildingConnection>();
         }
@@ -21,7 +20,6 @@ namespace CampusNavigation.Models
         public double Latitude { get; set; }
         public double Longitude { get; set; }
         
-        // Navigation properties
         public virtual ICollection<BuildingConnection> OutgoingConnections { get; set; }
         public virtual ICollection<BuildingConnection> IncomingConnections { get; set; }
     }

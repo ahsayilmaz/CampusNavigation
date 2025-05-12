@@ -22,30 +22,18 @@ namespace CampusNavigation.Tests
         [Fact]
         public async Task Get_ApiEndpoint_ReturnsSuccess()
         {
-            // Arrange
-            var requestUri = "/api/your-endpoint"; // Replace with your actual API endpoint
-
-            // Act
+            var requestUri = "/api/your-endpoint"; 
             var response = await _client.GetAsync(requestUri);
-
-            // Assert
             response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
         [Fact]
         public async Task Post_ApiEndpoint_ReturnsCreated()
         {
-            // Arrange
-            var requestUri = "/api/your-endpoint"; // Replace with your actual API endpoint
-            var content = new StringContent("{\"name\":\"test\"}", Encoding.UTF8, "application/json"); // Adjust the content as needed
-
-            // Act
+            var requestUri = "/api/your-endpoint"; 
+            var content = new StringContent("{\"name\":\"test\"}", Encoding.UTF8, "application/json"); 
             var response = await _client.PostAsync(requestUri, content);
-
-            // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Created);
         }
-
-        // Add more tests for other CRUD operations as needed
     }
 }

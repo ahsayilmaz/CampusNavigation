@@ -1,4 +1,3 @@
--- Create tables based on your existing Azure SQL schema
 CREATE TABLE IF NOT EXISTS Buildings (
     Id INT AUTO_INCREMENT PRIMARY KEY,
     Name NVARCHAR(200) NOT NULL,
@@ -32,10 +31,10 @@ CREATE TABLE IF NOT EXISTS UserLocations (
 CREATE TABLE IF NOT EXISTS UserPresences (
     Id INT AUTO_INCREMENT PRIMARY KEY,
     UserId VARCHAR(255) NOT NULL,
-    CurrentBuildingId INT NULL, -- Changed from NOT NULL to NULL
+    CurrentBuildingId INT NULL,
     LastSeen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CurrentBuildingId) REFERENCES Buildings(Id),
-    UNIQUE INDEX idx_userpresences_userid (UserId) -- Assuming one presence record per user
+    UNIQUE INDEX idx_userpresences_userid (UserId)
 );
 
 CREATE TABLE IF NOT EXISTS Users (

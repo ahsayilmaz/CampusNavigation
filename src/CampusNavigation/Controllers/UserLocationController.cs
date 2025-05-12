@@ -1,4 +1,3 @@
-// Controllers/UserLocationController.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +23,6 @@ namespace CampusNavigation.Controllers
             _logger = logger;
         }
 
-        // POST: api/UserLocation
         [HttpPost]
         public async Task<IActionResult> PostUserLocation([FromBody] UserLocation userLocation)
         {
@@ -33,7 +31,6 @@ namespace CampusNavigation.Controllers
                 return BadRequest(ModelState);
             }
 
-            // Generate a user ID if not provided
             if (string.IsNullOrEmpty(userLocation.UserId))
             {
                 userLocation.UserId = Guid.NewGuid().ToString();
@@ -47,7 +44,6 @@ namespace CampusNavigation.Controllers
             return CreatedAtAction(nameof(GetUserLocation), new { id = userLocation.Id }, userLocation);
         }
 
-        // GET: api/UserLocation/5
         [HttpGet("{id}")]
         public async Task<ActionResult<UserLocation>> GetUserLocation(int id)
         {
@@ -61,24 +57,20 @@ namespace CampusNavigation.Controllers
             return userLocation;
         }
 
-        // GET: api/UserLocation/density
         [HttpGet("density")]
         public async Task<ActionResult<object>> GetUserDensity()
         {
-            // Only consider locations from the past 10 minutes
             var cutoffTime = DateTime.UtcNow.AddMinutes(-10);
             
             var recentLocations = await _context.UserLocations
                 .Where(ul => ul.Timestamp > cutoffTime)
                 .ToListAsync();
 
-            // Calculate node density (buildings)
             var nodeDensity = recentLocations
                 .Where(loc => !string.IsNullOrEmpty(loc.CurrentNode))
                 .GroupBy(loc => loc.CurrentNode)
                 .ToDictionary(group => group.Key!, group => group.Count());
 
-            // Calculate edge density (paths between buildings)
             var edgeDensity = recentLocations
                 .Where(loc => !string.IsNullOrEmpty(loc.CurrentEdge))
                 .GroupBy(loc => loc.CurrentEdge)
@@ -87,14 +79,11 @@ namespace CampusNavigation.Controllers
             return new { nodes = nodeDensity, edges = edgeDensity };
         }
 
-        // For development: Fill with dummy data
         [HttpPost("dummy-data")]
         public async Task<IActionResult> GenerateDummyData()
         {
             try
             {
-                // Get all buildings and connections
-                // We need to include the Building details for FromBuilding and ToBuilding to get their names
                 var connections = await _context.BuildingConnections
                                                 .Include(c => c.FromBuilding)
                                                 .Include(c => c.ToBuilding)
@@ -112,22 +101,14 @@ namespace CampusNavigation.Controllers
                 
                 var random = new Random();
                 var dummyLocations = new List<UserLocation>();
-                
-                // Generate 10 dummy users on edges
                 int userCount = 10;
                 
                 for (int i = 0; i < userCount; i++)
                 {
-                    // Create a unique ID for each new dummy user location entry
-                    // This avoids conflicts if the button is clicked multiple times.
-                    // We can use a simpler counter or a more robust unique ID generation if needed.
                     string uniqueSuffix = DateTime.UtcNow.Ticks.ToString() + "_" + i.ToString();
                     string userId = $"edge_user_{uniqueSuffix}";
-                    
-                    // Place on a random valid path (edge)
                     var connection = connections[random.Next(connections.Count)];
                     
-                    // Ensure FromBuilding and ToBuilding are not null (already filtered, but good practice)
                     if (connection.FromBuilding == null || connection.ToBuilding == null) continue;
 
                     var edge = $"{connection.FromBuilding.Name}|{connection.ToBuilding.Name}";

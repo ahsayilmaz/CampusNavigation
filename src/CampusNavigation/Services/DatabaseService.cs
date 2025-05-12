@@ -26,18 +26,18 @@ namespace CampusNavigation.Services
             return await _context.Buildings.ToListAsync();
         }
 
-        public async Task<Building?> GetItemByIdAsync(int id) // Changed to Building?
+        public async Task<Building?> GetItemByIdAsync(int id) 
         {
             _logger.LogInformation("Getting building with id {Id}", id);
             return await _context.Buildings.FindAsync(id);
         }
 
-        public async Task<Building?> CreateItemAsync(Building item) // Changed to Building?
+        public async Task<Building?> CreateItemAsync(Building item) 
         {
             if (item == null)
             {
                 _logger.LogWarning("Attempted to create a null building item.");
-                return null; // Return null if the item is null
+                return null; 
             }
             _logger.LogInformation("Creating new building with Name: {Name}", item.Name);
             _context.Buildings.Add(item);
@@ -81,16 +81,16 @@ namespace CampusNavigation.Services
             try
             {
                 return await _context.UserPresences
-                    .Where(up => up.CurrentBuildingId.HasValue) // Filter out null CurrentBuildingId
-                    .Select(up => new { BuildingId = up.CurrentBuildingId!.Value, UserId = up.UserId }) // Select non-nullable BuildingId
-                    .GroupBy(up => up.BuildingId) // Group by the non-nullable BuildingId
+                    .Where(up => up.CurrentBuildingId.HasValue) 
+                    .Select(up => new { BuildingId = up.CurrentBuildingId!.Value, UserId = up.UserId }) 
+                    .GroupBy(up => up.BuildingId) 
                     .Select(g => new { BuildingId = g.Key, UserCount = g.Count() })
                     .ToDictionaryAsync(x => x.BuildingId, x => x.UserCount);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting user counts per building");
-                return new Dictionary<int, int>(); // Return empty dictionary on error
+                return new Dictionary<int, int>(); 
             }
         }
     }

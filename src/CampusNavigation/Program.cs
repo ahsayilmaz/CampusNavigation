@@ -1,17 +1,20 @@
 using System;
+using System.Linq;
 using CampusNavigation.Data;
 using CampusNavigation.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
 builder.Services.AddDbContext<ApplicationDbContext>(options => {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     options.UseMySql(
@@ -26,34 +29,49 @@ builder.Services.AddDbContext<ApplicationDbContext>(options => {
     );
 });
 
-// Register database seed service
 builder.Services.AddHostedService<DatabaseSeedService>();
-
-// Register shutdown cleanup service
 builder.Services.AddHostedService<ShutdownCleanupService>();
-
-// Register DatabaseService for IDatabaseService
 builder.Services.AddScoped<IDatabaseService, DatabaseService>();
-
-// Add controllers
 builder.Services.AddControllers();
+
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>(
+        name: "database-check",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: new[] { "database" });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
 
-// Configure static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
-
-// Configure routing
 app.UseRouting();
 
-// Map controllers and SPA fallback
+app.MapHealthChecks("/api/diagnostics/dbstatus", new HealthCheckOptions
+{
+    Predicate = (check) => check.Tags.Contains("database"),
+    ResponseWriter = async (context, report) =>
+    {
+        var result = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration
+            })
+        };
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(result));
+    }
+});
+
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 

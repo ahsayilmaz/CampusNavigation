@@ -1,4 +1,3 @@
-// linked list kullanan queue
 class Queue {
     constructor() {
         this.head = 0;
